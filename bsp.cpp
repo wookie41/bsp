@@ -108,7 +108,7 @@ int main(int argc, char** argv)
 
     BSPNode* root = partitionSpace(initialMapLines);
 
-    glBufferData(GL_ARRAY_BUFFER, sizeof(mapVertices), mapVertices, GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(mapVertices), mapVertices, GL_STATIC_DRAW);
 
     glClear(GL_COLOR_BUFFER_BIT);
     render(root);
@@ -170,7 +170,6 @@ bool isConvex(uint32_t* shapeVerts, uint16_t numVerts)
     return true;
 }
 
-
 BSPNode* partitionSpace(BSPLines* lines)
 {
     BSPNode* node = new BSPNode;
@@ -194,81 +193,108 @@ BSPNode* partitionSpace(BSPLines* lines)
     splitter.verticesIndecies = lines->verticesIndecies + splitterIdx;
     splitter.numVertices = 2;
 
+    uint32_t splitterStartVert = lines->verticesIndecies[splitterIdx];
+    uint32_t splitterEndVert = lines->verticesIndecies[splitterIdx + 1];
+
     for (uint16_t lineIdx = 0; lineIdx < lines->numVertices; lineIdx += 2)
     {
-        bool lineStartsInFront =
-        isPointInFront(&lines->verticesIndecies[splitterIdx], lines->verticesIndecies[lineIdx]);
-        bool lineEndsInFront =
-        isPointInFront(&lines->verticesIndecies[splitterIdx], lines->verticesIndecies[lineIdx + 1]);
+        uint32_t lineStartVert = lines->verticesIndecies[lineIdx];
+        uint32_t lineEndVert = lines->verticesIndecies[lineIdx + 1];
 
-        vec2* lineStart = &mapVertices[lines->verticesIndecies[lineIdx]];
-        vec2* lineEnd = &mapVertices[lines->verticesIndecies[lineIdx + 1]];
+        bool lineStartsInFront = isPointInFront(&lines->verticesIndecies[splitterIdx], lineStartVert);
+        bool lineEndsInFront = isPointInFront(&lines->verticesIndecies[splitterIdx], lineEndVert);
+
+        if (lineIdx == splitterIdx)
+        {
+            back->verticesIndecies[back->numVertices++] = lineStartVert;
+            back->verticesIndecies[back->numVertices++] = lineEndVert;
+            continue;
+        }
+
+        if (lineStartVert == splitterEndVert)
+        {
+            BSPLines* side = lineEndsInFront ? front : back;
+            side->verticesIndecies[side->numVertices++] = lineStartVert;
+            side->verticesIndecies[side->numVertices++] = lineEndVert;
+            continue;
+        }
+
+        if (lineEndVert == splitterStartVert)
+        {
+            BSPLines* side = lineStartsInFront ? front : back;
+            side->verticesIndecies[side->numVertices++] = lineStartVert;
+            side->verticesIndecies[side->numVertices++] = lineEndVert;
+            continue;
+        }
 
         if (lineStartsInFront == lineEndsInFront)
         {
             BSPLines* side = lineStartsInFront ? front : back;
-            side->verticesIndecies[side->numVertices++] = lines->verticesIndecies[lineIdx];
-            side->verticesIndecies[side->numVertices++] = lines->verticesIndecies[lineIdx + 1];
+            side->verticesIndecies[side->numVertices++] = lineStartVert;
+            side->verticesIndecies[side->numVertices++] = lineEndVert;
+            continue;
+        }
+
+        //the lines intersect
+
+        vec2* lineStart = &mapVertices[lineStartVert];
+        vec2* lineEnd = &mapVertices[lineEndVert];
+
+        vec2* splitterStart = &mapVertices[splitterStartVert];
+        vec2* splitterEnd = &mapVertices[splitterEndVert];
+
+        float splitterRise = splitterEnd->y - splitterStart->y;
+        float splitterRun = splitterEnd->x - splitterStart->x;
+        float splitterSlope = splitterRise / splitterRun;
+
+        float lineRise = lineEnd->y - lineStart->y;
+        float lineRun = lineEnd->x - lineStart->x;
+        float lineSlope = lineRise / lineRun;
+
+        float slope;
+        vec2* start;
+
+        float intersectionX;
+        if (splitterRun == 0.f)
+        {
+            slope = lineSlope;
+            start = lineStart;
+            intersectionX = splitterStart->x;
+        }
+        else if (lineRun == 0.f)
+        {
+            slope = splitterSlope;
+            start = splitterStart;
+            intersectionX = lineStart->x;
         }
         else
         {
-            vec2* splitterStart = &mapVertices[lines->verticesIndecies[splitterIdx]];
-            vec2* splitterEnd = &mapVertices[lines->verticesIndecies[splitterIdx + 1]];
+            slope = splitterSlope;
+            start = splitterStart;
 
-            vec2* lineStart = &mapVertices[lines->verticesIndecies[lineIdx]];
-            vec2* lineEnd = &mapVertices[lines->verticesIndecies[lineIdx + 1]];
+            intersectionX = ((splitterStart->y - (splitterSlope * splitterStart->x)) -
+                             (lineStart->y - (lineSlope * lineStart->x))) /
+                            (lineSlope - splitterSlope);
+        }
 
-            float splitterRise = splitterEnd->y - splitterStart->y;
-            float splitterRun = splitterEnd->x - splitterStart->x;
-            float splitterSlope = splitterRise / splitterRun;
+        float intersectionY = (slope * (intersectionX - start->x)) + start->y;
 
-            float lineRise = lineEnd->y - lineStart->y;
-            float lineRun = lineEnd->x - lineStart->x;
-            float lineSlope = lineRise / lineRun;
+        uint32_t intersectionPointIdx = mapVerticesCount++;
+        mapVertices[intersectionPointIdx] = { intersectionX, intersectionY };
 
-            float slope;
-            vec2* start;
+        {
+            BSPLines* f = lineStartsInFront ? front : back;
+            BSPLines* b = lineStartsInFront ? back : front;
 
-            float intersectionX;
-            if (splitterRun == 0.f)
-            {
-                slope = lineSlope;
-                start = lineStart;
-                intersectionX = splitterStart->x;
-            }
-            else if (lineRun == 0.f)
-            {
-                slope = splitterSlope;
-                start = splitterStart;
-                intersectionX = lineStart->x;
-            }
-            else
-            {
-                slope = splitterSlope;
-                start = splitterStart;
+            f->verticesIndecies[f->numVertices++] = lineStartVert;
+            f->verticesIndecies[f->numVertices++] = intersectionPointIdx;
 
-                intersectionX = ((splitterStart->y - (splitterSlope * splitterStart->x)) -
-                                 (lineStart->y - (lineSlope * lineStart->x))) /
-                                (lineSlope - splitterSlope);
-            }
-
-            float intersectionY = (slope * (intersectionX - start->x)) + start->y;
-
-            uint32_t intersectionPointIdx = mapVerticesCount++;
-            mapVertices[intersectionPointIdx] = { intersectionX, intersectionY };
-
-            {
-                BSPLines* f = lineStartsInFront ? front : back;
-                BSPLines* b = lineStartsInFront ? back : front;
-
-                f->verticesIndecies[f->numVertices++] = lines->verticesIndecies[lineIdx];
-                f->verticesIndecies[f->numVertices++] = intersectionPointIdx;
-
-                b->verticesIndecies[f->numVertices++] = intersectionPointIdx;
-                b->verticesIndecies[f->numVertices++] = lines->verticesIndecies[lineIdx + 1];
-            }
+            b->verticesIndecies[b->numVertices++] = intersectionPointIdx;
+            b->verticesIndecies[b->numVertices++] = lineEndVert;
         }
     }
+
+    // TODO copy the front/back arrays so they fit their size
 
     delete lines->verticesIndecies;
     delete lines;
@@ -280,8 +306,7 @@ BSPNode* partitionSpace(BSPLines* lines)
     return node;
 }
 
-
-//TODO this is not the best way to pick a splitter, we can think of soemthing better
+// TODO this is not the best way to pick a splitter, we can think of soemthing better
 uint16_t pickSplitter(BSPLines* lines)
 {
     vec2 middle;
@@ -323,7 +348,7 @@ bool isPointInFront(uint32_t* lineIndices, uint32_t pointIdx)
     vec2 pointVec{ point->x - lineStart->x, point->y - lineStart->y };
     vec2 lineVec{ lineEnd->x - lineStart->x, lineEnd->y - lineStart->y };
 
-    return lineVec.x * pointVec.y >= lineVec.y * pointVec.x;
+    return lineVec.x * pointVec.y > lineVec.y * pointVec.x;
 }
 
 void render(BSPNode* node)
@@ -345,6 +370,13 @@ void renderShape(BSPLines* shape)
     {
         color[channelIdx] = ((float)(rand() % 255)) / 255.f;
     }
+
+    puts("Shape...");
+    for (uint32_t i = 0; i < shape->numVertices; i += 2)
+    {
+        printf("%d ", shape->verticesIndecies[i]);
+    }
+    puts("");
 
     glUniform4fv(glGetUniformLocation(basicShader, "color"), 1, color);
     glDrawElements(GL_LINES, shape->numVertices, GL_UNSIGNED_INT, shape->verticesIndecies);
