@@ -25,12 +25,14 @@ struct vec2
 };
 
 static vec2 mapVertices[400] = { { 100.f, 100.f }, { 700.f, 100.f }, { 700.f, 500.f }, { 100.f, 500.f },
-                                 { 500.f, 150.f }, { 550.f, 200.f }, { 500.f, 250.f }, { 450.f, 200.f } };
+                                 { 500.f, 150.f }, { 550.f, 200.f }, { 500.f, 250.f }, { 450.f, 200.f },
+                                 { 200.f, 250.f }, { 250.f, 300.f }, { 200.f, 350.f }, { 150.f, 300.f } };
 
-int mapVerticesCount = 8;
-int mapElementsCount = 16;
 
-static uint32_t mapIndices[]{ 0, 1, 1, 2, 2, 3, 3, 0, 4, 5, 5, 6, 6, 7, 7, 4 };
+int mapVerticesCount = 12;
+
+static uint32_t mapIndices[]{ 0, 1, 1, 2, 2, 3, 3, 0, 4, 5, 5, 6, 6, 7, 7, 4, 8, 9, 9, 10, 10, 11, 11, 8 };
+int mapElementsCount = sizeof(mapIndices) / sizeof(uint32_t);
 
 // shapeVerts is a list of mapVertices indicies that make the shape
 bool isConvex(uint32_t* shapeVerts, uint16_t numVerts);
@@ -94,7 +96,7 @@ int main(int argc, char** argv)
     bool isRunning = true;
 
     BSPLines* initialMapLines = new BSPLines;
-    initialMapLines->elements = new uint32_t[16];
+    initialMapLines->elements = new uint32_t[mapElementsCount];
     initialMapLines->numElements = mapElementsCount;
     memcpy(initialMapLines->elements, mapIndices, sizeof(mapIndices));
 
@@ -146,31 +148,93 @@ inline float dot(vec2 const* v1, vec2 const* v2) { return (v1->x * v2->x) + (v1-
 
 bool isConvex(uint32_t* shapeVerts, uint16_t numVerts)
 {
-    bool hadNegativeDot = false;
-    bool hadPositiveDot = false;
+    // bool hadNegativeDot = false;
+    // bool hadPositiveDot = false;
 
-    for (uint16_t vertIdx = 0; vertIdx < numVerts; vertIdx += 2)
+    // for (uint16_t vertIdx = 0; vertIdx < numVerts; vertIdx += 2)
+    // {
+    //     uint16_t prevVertIdx = vertIdx + 1;
+    //     uint16_t nextVertIdx = vertIdx == (numVerts - 2) ? 0 : vertIdx + 3;
+
+    //     vec2* prevVert = mapVertices + shapeVerts[prevVertIdx];
+    //     vec2* currVert = mapVertices + shapeVerts[vertIdx];
+    //     vec2* nextVert = mapVertices + shapeVerts[nextVertIdx];
+
+    //     vec2 v1 = { prevVert->x - currVert->x, prevVert->y - currVert->y };
+    //     vec2 v2 = { prevVert->x - nextVert->x, prevVert->y - nextVert->y };
+
+    //     float currDot = dot(&v1, &v2);
+
+    //     if (currDot > 0.f)
+    //         hadPositiveDot = true;
+    //     else if (currDot < 0.f)
+    //         hadNegativeDot = true;
+
+    //     if (hadNegativeDot && hadPositiveDot)
+    //     {
+    //         return false;
+    //     }
+    // }
+    // return true;
+
+    bool hadNegativeX = false, hadPositiveX = false, hadNegativeY = false, hadPositiveY = false;
+
+    vec2* firstLineStart = mapVertices + shapeVerts[0];
+    vec2* firstLineEnd = mapVertices + shapeVerts[1];
+
+    vec2 currentDelta = { firstLineEnd->x - firstLineStart->x, firstLineEnd->y - firstLineStart->y };
+
+    for (uint16_t vertIdx = 2; vertIdx < numVerts; vertIdx += 2)
     {
-        uint16_t prevVertIdx = vertIdx == 0 ? numVerts - 2 : vertIdx - 2;
-        uint16_t nextVertIdx = vertIdx == (numVerts - 2) ? 0 : vertIdx + 2;
+        vec2* lineStart = mapVertices + shapeVerts[vertIdx];
+        vec2* lineEnd = mapVertices + shapeVerts[vertIdx + 1];
 
-        vec2* prevVert = mapVertices + shapeVerts[prevVertIdx];
-        vec2* currVert = mapVertices + shapeVerts[vertIdx];
-        vec2* nextVert = mapVertices + shapeVerts[nextVertIdx];
+        vec2 delta = { lineEnd->x - lineStart->x, lineEnd->y - lineStart->y };
 
-        vec2 v1 = { currVert->x - prevVert->x, currVert->y - prevVert->y };
-        vec2 v2 = { currVert->x - nextVert->x, currVert->y - nextVert->y };
-
-        float currDot = dot(&v1, &v2);
-
-        if (currDot > 0.f)
-            hadPositiveDot = true;
-        else if (currDot < 0.f)
-            hadNegativeDot = true;
-
-        if (hadNegativeDot && hadPositiveDot)
+        if (delta.x > 0)
         {
-            return false;
+            if (currentDelta.x < 0)
+            {
+                if (hadPositiveX)
+                    return false;
+
+                hadNegativeX = true;
+            }
+            currentDelta.x = delta.x;
+        }
+        else if (delta.x < 0)
+        {
+            if (currentDelta.x > 0)
+            {
+                if (hadNegativeX)
+                    return false;
+
+                hadPositiveX = true;
+            }
+            currentDelta.x = delta.x;
+        }
+
+        if (delta.y > 0)
+        {
+            if (currentDelta.y < 0)
+            {
+                if (hadPositiveY)
+                    return false;
+
+                hadNegativeY = true;
+            }
+            currentDelta.y = delta.y;
+        }
+        else if (delta.y < 0)
+        {
+            if (currentDelta.y > 0)
+            {
+                if (hadNegativeY)
+                    return false;
+
+                hadPositiveY = true;
+            }
+            currentDelta.y = delta.y;
         }
     }
     return true;
@@ -376,7 +440,6 @@ void renderShape(BSPNode* node)
     }
 
     color[3] = 1.f;
-
 
     glUniform4fv(glGetUniformLocation(basicShader, "PointColor"), 1, color);
     glDrawElements(GL_LINES, node->data.lines->numElements, GL_UNSIGNED_INT, node->data.lines->elements);
